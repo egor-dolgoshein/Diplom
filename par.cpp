@@ -3,9 +3,9 @@
 #include <cmath>
 #include <cstring>
 
-const float hx = 0.01f;
-const float ht = 0.001f;
-const int deg_num = 41; // = tetta?
+const float hx = 0.05f;
+const float ht = 0.01f;
+const int deg_num = 21; // = tetta?
 
 const float PI = std::atan(1.0f) * 4.f;
 const float hx_2 = hx * hx;
@@ -174,7 +174,8 @@ void Xi_calc(Params params)
 	{
 		d[i] = -2.0f + 0.1f * i;
 		r[i] = pow(10.f, d[i]);
-		r_2[i] = r[i] * 0.5f;
+		// r_2[i] = r[i] * 0.5f;
+		r_2[i] = r[i];
 	}
 	
 	float Tr_max = (2.0f * PI / r[0]); // max period

@@ -30,6 +30,7 @@ struct Params
 	float tau_omega0; // start frequency
 	float tau_omegaN; // start frequency
 	float sigma2;
+	float angle;
 };
 
 struct Params_delta
@@ -84,15 +85,19 @@ float K1(float x)
 }
 float V1(Params param, float x, float y, float alpha_cos_tr, float mst1, float mst2, float mst3)
 {
-	return (param.sigma2 * x + mst1) * K1(x) + (-x) * pow(K1(x), 0.5f) * (sin(y) * (alpha_cos_tr - mst3) - cos(y) * mst2);
+	// return (param.sigma2 * x + mst1) * K1(x) + (-x) * pow(K1(x), 0.5f) * (cos(y) * (alpha_cos_tr - mst3) - sin(y) * mst2); // another H orientation
+	// return (param.sigma2 * x + mst1) * K1(x) + (-x) * pow(K1(x), 0.5f) * (sin(y) * (alpha_cos_tr - mst3) - cos(y) * mst2); // original case
+	return (param.sigma2 * x + mst1 + alpha_cos_tr * cos(param.angle)) * K1(x) + (-x) * pow(K1(x), 0.5f) * (sin(y) * (alpha_cos_tr * sin(param.angle) - mst3) - cos(y) * mst2); // with angle xi
 }
 float K2(float x)
 {
 	return 1 / (K1(x));
 }
-float V2(float x, float y, float alpha_cos_tr, float mst2, float mst3)
+float V2(float angle, float x, float y, float alpha_cos_tr, float mst2, float mst3)
 {
-	return pow(K2(x), 0.5f) *((alpha_cos_tr - mst3) *  cos(y) + sin(y) * mst2); //* K2(x); 
+	// return -pow(K2(x), 0.5f) * ((alpha_cos_tr - mst3) * sin(y) + cos(y) * mst2); // another H orientation
+	// return pow(K2(x), 0.5f) * ((alpha_cos_tr - mst3) * cos(y) + sin(y) * mst2); //* K2(x); original case
+	return pow(K2(x), 0.5f) * ((alpha_cos_tr * sin(angle) - mst3) * cos(y) + sin(y) * mst2); // with angle xi
 }
 
 float Ax(Params param, Params_delta param_delta, float x, float y, float tr, float mst1, float mst2, float mst3)
@@ -129,24 +134,24 @@ float F(float W_prev, float W_curr, float W_next)
 }
 float Ay(Params param, Params_delta param_delta, float x, float y, float tr, float mst2, float mst3)
 {
-	return param_delta.exp_delta_ht_ht * (-K2(x) - hy__2 * V2(x, y - hy__2, tr, mst2, mst3));
+	return param_delta.exp_delta_ht_ht * (-K2(x) - hy__2 * V2(param.angle, x, y - hy__2, tr, mst2, mst3));
 }
 float By(Params param, Params_delta param_delta, float x, float y, float tr, float mst2, float mst3)
 {
-	return param_delta.exp_delta_ht * (param_delta.delta_ht_hy_2 + param.ht * (2 * K2(x) + hy__2 * (V2(x, y + hy__2, tr, mst2, mst3) - V2(x, y - hy__2, tr, mst2, mst3))));
+	return param_delta.exp_delta_ht * (param_delta.delta_ht_hy_2 + param.ht * (2 * K2(x) + hy__2 * (V2(param.angle, x, y + hy__2, tr, mst2, mst3) - V2(param.angle, x, y - hy__2, tr, mst2, mst3))));
 }
 float Cy(Params param, Params_delta param_delta, float x, float y, float tr, float mst2, float mst3)
 {
-	return param_delta.exp_delta_ht_ht * (-K2(x) + hy__2 * V2(x, y + hy__2, tr, mst2, mst3));
+	return param_delta.exp_delta_ht_ht * (-K2(x) + hy__2 * V2(param.angle, x, y + hy__2, tr, mst2, mst3));
 }
 
 float By_0(Params param, Params_delta param_delta, float x, float y, float tr, float mst2, float mst3)
 {
-	return param_delta.exp_delta_ht * (param_delta.delta_ht_hy_2 + param.ht * (2 * K2(x) + hy__2 * V2(x, y + hy__2, tr, mst2, mst3)));
+	return param_delta.exp_delta_ht * (param_delta.delta_ht_hy_2 + param.ht * (2 * K2(x) + hy__2 * V2(param.angle, x, y + hy__2, tr, mst2, mst3)));
 }
 float By_MM(Params param, Params_delta param_delta, float x, float y, float tr, float mst2, float mst3)
 {
-	return param_delta.exp_delta_ht * (param_delta.delta_ht_hy_2 + param.ht * (2 * K2(x) + hy__2 * V2(x, y - hy__2, tr, mst2, mst3)));
+	return param_delta.exp_delta_ht * (param_delta.delta_ht_hy_2 + param.ht * (2 * K2(x) + hy__2 * V2(param.angle, x, y - hy__2, tr, mst2, mst3)));
 }
 void Wprev_equal_Wcurr(int N, int MM, float **Wprev, float **Wcurr)
 {
@@ -169,49 +174,62 @@ void W_normirovka(int N, int MM, float **W)
 		}
 	}
 }
-void M_calc(int k, int N, int MM, const std::vector<float> &x, const std::vector<float> &y, float **W, std::vector<float> &M, std::vector<float> &mst_calc1, std::vector<float> &mst_calc2, std::vector<float> &mst_calc3)
+
+void M_calc(int k, int N, int MM, const std::vector<float> &x, const std::vector<float> &y, float **W, std::vector<float> &M, std::vector<float> &mst_calc1, std::vector<float> &mst_calc2, std::vector<float> &mst_calc3, float angle)
 {
 	float W_on_sqrt;
 	float **W_on_sin_phi = new float *[N + 1];
+
 	W_on_sin_phi[0] = new float[(N + 1) * (MM + 1)];
 	for (int i = 1; i < N + 1; i++)
 	{
 		W_on_sin_phi[i] = W_on_sin_phi[0] + i * (MM + 1);
-	}	
+	}
 	float **W_on_cos_phi = new float *[N + 1];
 	W_on_cos_phi[0] = new float[(N + 1) * (MM + 1)];
 	for (int i = 1; i < N + 1; i++)
 	{
 		W_on_cos_phi[i] = W_on_cos_phi[0] + i * (MM + 1);
-	}	
+	}
 	float **W_on_x = new float *[N + 1];
 	W_on_x[0] = new float[(N + 1) * (MM + 1)];
 	for (int i = 1; i < N + 1; i++)
 	{
 		W_on_x[i] = W_on_x[0] + i * (MM + 1);
-	}	
-	
+	}
+
+	float **W_Integrating_function = new float *[N + 1];
+	W_Integrating_function[0] = new float[(N + 1) * (MM + 1)];
+
+	for (int i = 1; i < N + 1; ++i)
+	{
+		W_Integrating_function[i] = W_Integrating_function[0] + i;
+	}
+
 	for (int j = 0; j <= MM; j++)
 	{
 		for (int i = 0; i <= N; i++)
-		{	
+		{
 			W_on_sqrt = W[i][j] * pow(1 - x[i] * x[i], 0.5f);
-			W_on_sin_phi[i][j] =  W_on_sqrt * sin(y[j]);
+			W_on_sin_phi[i][j] = W_on_sqrt * sin(y[j]); // W*sqrt(1-x*x)*cos(phi)
 			W_on_x[i][j] = W[i][j] * x[i];
-			W_on_cos_phi[i][j] = W_on_sqrt * cos(y[j]);
+			W_on_cos_phi[i][j] = W_on_sqrt * cos(y[j]);													// W*sqrt(1-x*x)*cos(phi)
+			W_Integrating_function[i][j] = W_on_sin_phi[i][j] * sin(angle) + W_on_x[i][j] * cos(angle); // with angle xi
 		}
 	}
-	M[k] = Integrate_Trapeze_2(N, hx, MM, hy, W_on_sin_phi);
+	M[k] = Integrate_Trapeze_2(N, hx, MM, hy, W_Integrating_function); // on sin phi
 	mst_calc1[k] = Integrate_Trapeze_2(N, hx, MM, hy, W_on_x);
-	mst_calc2[k] = Integrate_Trapeze_2(N, hx, MM, hy, W_on_cos_phi);
-	mst_calc3[k] = M[k];
-	
+	mst_calc2[k] = Integrate_Trapeze_2(N, hx, MM, hy, W_on_cos_phi); // cos
+	mst_calc3[k] = Integrate_Trapeze_2(N, hx, MM, hy, W_on_sin_phi); // M[k]
+
 	delete[] W_on_sin_phi[0];
 	delete[] W_on_sin_phi;
 	delete[] W_on_cos_phi[0];
 	delete[] W_on_cos_phi;
 	delete[] W_on_x[0];
 	delete[] W_on_x;
+	delete[] W_Integrating_function[0];
+	delete[] W_Integrating_function;
 }
 
 float W_start(float alp, float x, float y, float r)
@@ -232,7 +250,7 @@ void ProgonkaX(int N, int j, const std::vector<float> &A, const std::vector<floa
 	v.reserve(N + 1);
 	float inv_denom;
 	float W0;
-	
+
 	alpha[1] = 0.f;
 	beta[1] = 0.f;
 	gamma[1] = 1.f;
@@ -277,7 +295,7 @@ void ProgonkaY(int N, int i, const std::vector<float> &A, const std::vector<floa
 	v.reserve(N + 1);
 	float inv_denom;
 	float W0;
-	
+
 	alpha[1] = 0.f;
 	beta[1] = 0.f;
 	gamma[1] = 1.f;
@@ -309,8 +327,9 @@ void ProgonkaY(int N, int i, const std::vector<float> &A, const std::vector<floa
 
 void find_last_W_and_M(Params params, Params_delta params_delta, int N_Tr, int N, int MM,
 					   const std::vector<float> &x, const std::vector<float> &y, const std::vector<float> &t, const std::vector<float> &mst1, const std::vector<float> &mst2, const std::vector<float> &mst3,
-					   float **Wprev , float r, float **Wcurr , std::vector<float> &M, std::vector<float> &mst_calc1, std::vector<float> &mst_calc2, std::vector<float> &mst_calc3, bool flag)
+					   float **Wprev, float r, float **Wcurr, std::vector<float> &M, std::vector<float> &mst_calc1, std::vector<float> &mst_calc2, std::vector<float> &mst_calc3, bool flag)
 {
+	bool FLAG_PAR_CASE = (params.angle == 0);
 	std::vector<float> A_values_X;
 	A_values_X.reserve(N + 1);
 	std::vector<float> B_values_X;
@@ -329,7 +348,7 @@ void find_last_W_and_M(Params params, Params_delta params_delta, int N_Tr, int N
 	F_values_Y.reserve(MM + 1);
 	float alpha_cos_t_sdvig_r = 0.f;
 	float a, b, c;
-		
+
 	for (int i = 0; i < N + 1; i++)
 	{
 		A_values_X[i] = B_values_X[i] = C_values_X[i] = F_values_X[i] = 0.f;
@@ -339,8 +358,8 @@ void find_last_W_and_M(Params params, Params_delta params_delta, int N_Tr, int N
 		A_values_Y[j] = B_values_Y[j] = C_values_Y[j] = F_values_Y[j] = 0.f;
 	}
 	if (flag)
-		M_calc(0, N, MM, x, y, Wprev, M, mst_calc1, mst_calc2, mst_calc3);
-	
+		M_calc(0, N, MM, x, y, Wprev, M, mst_calc1, mst_calc2, mst_calc3, params.angle);
+
 	for (int k = 1; k <= N_Tr; k++)
 	{
 		alpha_cos_t_sdvig_r = params.alp * cos((t[k] - 0.5f * params.ht) * r);
@@ -382,9 +401,8 @@ void find_last_W_and_M(Params params, Params_delta params_delta, int N_Tr, int N
 			}
 			ProgonkaX(N, j, A_values_X, B_values_X, C_values_X, F_values_X, Wcurr);
 		}
-		
+
 		Wprev_equal_Wcurr(N, MM, Wprev, Wcurr);
-		
 		int i = 0;
 		for (int j = 0; j < MM; j++)
 		{
@@ -423,13 +441,13 @@ void find_last_W_and_M(Params params, Params_delta params_delta, int N_Tr, int N
 			F_values_Y[j] = -hy_2 * F(a * Wprev[i - 1][j], (b - VICHET) * Wprev[i][j], 0.f);
 		}
 		ProgonkaY(MM, i, A_values_Y, B_values_Y, C_values_Y, F_values_Y, Wcurr);
+
 		W_normirovka(N, MM, Wcurr);
 		Wprev_equal_Wcurr(N, MM, Wprev, Wcurr);
-		
 
 		if (flag)
-			M_calc(k, N, MM, x, y, Wprev, M, mst_calc1, mst_calc2, mst_calc3);
-		
+			M_calc(k, N, MM, x, y, Wprev, M, mst_calc1, mst_calc2, mst_calc3, params.angle);
+
 		A_values_X.clear();
 		B_values_X.clear();
 		C_values_X.clear();
@@ -462,6 +480,9 @@ void Xi_calc(Params params, Params_delta params_delta1, Params_delta params_delt
 		y[j] = (0.5f + j) * hy; 
 	}
 	int deg_num = int(10 * std::log10(params.tau_omegaN / params.tau_omega0)) + 1;
+	// int deg_num_first_half = int(10 * std::log10(params.tau_omegaN / params.tau_omega0)) + 1;
+	// int deg_num_second_half = deg_num_first_half;
+	// int deg_num = deg_num_first_half + deg_num_second_half;
 	printf("deg_num = %d\n", deg_num);
 	float *d = new float [deg_num];
 	float *r = new float [deg_num];
@@ -477,7 +498,41 @@ void Xi_calc(Params params, Params_delta params_delta1, Params_delta params_delt
 		r_2[i] = r[i] * 0.5f;
 		//printf("%f\t%f\t%f\n", d[i], r[i], r_2[i]);
 	}
-	
+
+	/*	float *d = new float[deg_num];
+		float *r = new float[deg_num];
+		float *r_2 = new float[deg_num];
+		r_2[0] = params.tau_omega0;
+		r[0] = 2.f * r_2[0];
+		d[0] = std::log10(r[0]);
+		// printf("%f\t%f\t%f\n", d[0], r[0], r_2[0]);
+		for (int i = 1; i < deg_num_first_half; i++)
+		{
+			d[i] = d[0] + (std::log10(38.9 * 2) - d[0]) / (deg_num_first_half - 1) * i;
+			// d[i] = d[0] + 0.087f * i;
+			r[i] = pow(10.f, d[i]);
+			r_2[i] = r[i] * 0.5f;
+			printf("%f\t%f\t%f\n", d[i], r[i], r_2[i]);
+		}
+		std::cout << "\n";
+		// d[0] = std::log10(38.9 * 2);
+		double a = (std::log10(params.tau_omegaN * 2) - std::log10(38.9 * 2)) / (deg_num - deg_num_first_half);
+		for (int i = deg_num_first_half; i < deg_num; i++)
+		{
+			d[i] = std::log10(38.9 * 2) + a * (i - deg_num_first_half + 1);
+			r[i] = pow(10.f, d[i]);
+			r_2[i] = r[i] * 0.5f;
+		}
+	*/
+	/*for (int i = deg_num - 1; i > deg_num_first_half - 2; --i)
+	{
+		r[i] -= 30.562973;
+		r_2[i] -= 15.281487;
+	}*/
+
+	// for (int i = 0; i < deg_num; ++i)
+	//	printf("%f\t%f\t%f\n", d[i], r[i], r_2[i]);
+
 	float Tr_max = (2.0f * PI / r[0]);
 	int L_max = int(Tr_max / params.ht);
 
@@ -490,27 +545,27 @@ void Xi_calc(Params params, Params_delta params_delta1, Params_delta params_delt
 	}
 
 	char buf[100];
-	int res = snprintf(buf, sizeof(buf),
-		"REXi_interaction_alpha%1.1f_sigma%1.1f_chil%1.1f_hx%1.4f_ht%1.4f.txt",
-		params.alp, params.sigma, params.XiL, hx, params.ht);
+	/*int res = snprintf(buf, sizeof(buf),
+					   "REXi_interaction_alpha%1.1f_sigma%1.1f_chil%1.1f_xi%1.1fPI_hx%1.4f_ht%1.4f.txt",
+					   params.alp, params.sigma, params.XiL, params.angle / PI, hx, params.ht);
 	FILE *Re_Xi_file_interaction;
-	Re_Xi_file_interaction = fopen(buf, "w");
-	
-	res = snprintf(buf, sizeof(buf),
-		"REXi_without_interaction_alpha%1.1f_sigma%1.1f_chil%1.1f_hx%1.4f_ht%1.4f.txt",
-		params.alp, params.sigma, params.XiL, hx, params.ht);
+	Re_Xi_file_interaction = fopen(buf, "w");*/
+
+	int res = snprintf(buf, sizeof(buf),
+					   "REXi_without_interaction_alpha%1.1f_sigma%1.1f_chil%1.1f_xi%1.1fPI_hx%1.4f_ht%1.4f.txt",
+					   params.alp, params.sigma, params.XiL, params.angle / PI, hx, params.ht);
 	FILE *Re_Xi_file_without_interaction;
 	Re_Xi_file_without_interaction = fopen(buf, "w");
 
+	/*	res = snprintf(buf, sizeof(buf),
+					   "IMXi_interaction_alpha%1.1f_sigma%1.1f_chil%1.1f_xi%1.1fPI_hx%1.4f_ht%1.4f.txt",
+					   params.alp, params.sigma, params.XiL, params.angle / PI, hx, params.ht);
+		FILE *Im_Xi_file_interaction;
+		Im_Xi_file_interaction = fopen(buf, "w");
+	*/
 	res = snprintf(buf, sizeof(buf),
-		"IMXi_interaction_alpha%1.1f_sigma%1.1f_chil%1.1f_hx%1.4f_ht%1.4f.txt",
-		params.alp, params.sigma, params.XiL, hx, params.ht);
-	FILE *Im_Xi_file_interaction;
-	Im_Xi_file_interaction = fopen(buf, "w");
-	
-	res = snprintf(buf, sizeof(buf),
-		"IMXi_without_interaction_alpha%1.1f_sigma%1.1f_chil%1.1f_hx%1.4f_ht%1.4f.txt",
-		params.alp, params.sigma, params.XiL, hx, params.ht);
+				   "IMXi_without_interaction_alpha%1.1f_sigma%1.1f_chil%1.1f_xi%1.1fPI_hx%1.4f_ht%1.4f.txt",
+				   params.alp, params.sigma, params.XiL, params.angle / PI, hx, params.ht);
 	FILE *Im_Xi_file_without_interaction;
 	Im_Xi_file_without_interaction = fopen(buf, "w");
 	
@@ -596,7 +651,8 @@ void Xi_calc(Params params, Params_delta params_delta1, Params_delta params_delt
 
 		float re_chi = r[s] * XiL_3_PI_alp * Integrate_Trapeze(N_Tr, params.ht, M_on_cos_rt);
 		fprintf(Re_Xi_file_without_interaction, "%f %f\n", r_2[s], re_chi);
-		
+		printf("%f\n", r_2[s]);
+		/*
 		//interactions on
 		float Xil_na_4_Pi = params.XiL / (4.f * PI);
 		float coeff_mst2_mst_3 = -params.XiL;
@@ -611,11 +667,11 @@ void Xi_calc(Params params, Params_delta params_delta1, Params_delta params_delt
 		{
 			for (int i = 0; i <= N; i++)
 			{
-				Wprev_[i][j] = W_start(params.alp, x[i], y[j], r[s]); 
+				Wprev_[i][j] = W_start(params.alp, x[i], y[j], r[s]);
 			}
 		}
 		W_normirovka(N, MM, Wprev_);
-		
+
 		find_last_W_and_M(params, params_delta2, N_Tr, N, MM, x, y, t, mst1, mst2, mst3, Wprev_, r[s], Wcurr_, M, mst_calc1, mst_calc2, mst_calc3, 0);
 
 		// now Wcurr contains last value of density - we will use it as initial value
@@ -633,12 +689,12 @@ void Xi_calc(Params params, Params_delta params_delta1, Params_delta params_delt
 
 		re_chi = r[s] * XiL_3_PI_alp * Integrate_Trapeze(N_Tr, params.ht, M_on_cos_rt);
 		fprintf(Re_Xi_file_interaction, "%f %f\n", r_2[s], re_chi);
-		printf("%f\n",r_2[s]);
+		printf("%f\n",r_2[s]);*/
 	}
 	fclose(Re_Xi_file_without_interaction);
 	fclose(Im_Xi_file_without_interaction);
-	fclose(Re_Xi_file_interaction);
-	fclose(Im_Xi_file_interaction);
+	// fclose(Re_Xi_file_interaction);
+	// fclose(Im_Xi_file_interaction);
 
 	delete[] Wprev[0];
 	delete[] Wprev;
@@ -671,8 +727,10 @@ int main(int argc, char *argv[])
 		sscanf(argv[4], "%f", &params.ht);
 		sscanf(argv[5], "%f", &params.tau_omega0);
 		sscanf(argv[6], "%f", &params.tau_omegaN);
+		sscanf(argv[7], "%f", &params.angle); // в градусах
 	}
-	
+	params.angle = params.angle * PI / 180; // в радианы
+
 	params.sigma2 = params.sigma * 2;
 	
 	params_delta1.delta = 6.f * params.sigma + 2 * params.alp;
