@@ -1,0 +1,2 @@
+working with vscode. compile with launch.json parameter args:[...] /*alpha, sigma, XL, ht, tau_0, tau_n, xi, psi*/. parameters like hx and hy are hidden in parameters.h. first things first calculate data for perpendicular case with per.cpp or per_original.cpp and
+parallel case with par.cpp with correct paths. than run any_angle.cpp. u'll get data for any angle. u better hide all data in folders that are in workspace. run .py file with correct paths to reveal the graphics.
