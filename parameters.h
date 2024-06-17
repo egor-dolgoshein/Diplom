@@ -31,14 +31,3 @@ struct Params
 	float cos_xi;
 	float cos_psi;
 };
-
-template <typename Container>
-float Integrate_Trapeze(int finish, float h, const Container function)
-{
-	float sum = 0.f;
-	for (int i = 1; i < finish; i++)
-	{
-		sum += function[i];
-	}
-	return h * ((function[0] + function[finish]) * 0.5f + sum);
-}
