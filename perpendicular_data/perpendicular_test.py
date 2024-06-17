@@ -59,8 +59,8 @@ for i in range(4):
     plt.yticks(ticks)
     plt.xlabel('wt')
     plt.plot(abscissa, data_values_per[i], color = 'blue', marker="o", markersize=5, linestyle = 'dashed', label='Original perpendicular case')
-    plt.plot(abscissa, data_values_half_Pi_deg[i], color = 'green', marker="o", markersize=3, linestyle = 'dashed', label='Numerical approximation with angle 90 deg')
+    #plt.plot(abscissa, data_values_half_Pi_deg[i], color = 'green', marker="o", markersize=3, linestyle = 'dashed', label='Numerical approximation with angle 90 deg')
     #plt.plot(abscissa, X_val, color='green', marker='o', markersize=3., label='Exact solution')
-    plt.legend()
+    #plt.legend(loc='upper right')
     plt.show()
 
